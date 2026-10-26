@@ -28,6 +28,7 @@ Skip songs, pause and change Spotify's volume using button combinations on your 
 - **Short rumble** as confirmation (Xbox controllers)
 - **Starts with Windows** (optional) and makes sure Spotify starts with volume control
 - **English & German** UI (follows your Windows language, or pick one)
+- **Dark & light mode** with a modern look (follows your Windows theme, or pick one)
 
 ## Download & setup
 

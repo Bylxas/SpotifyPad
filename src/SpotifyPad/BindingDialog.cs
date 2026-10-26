@@ -7,18 +7,18 @@ sealed class BindingDialog : Form
     readonly PadType type;
     readonly Func<int?> currentVolume;
     readonly NumericUpDown volume = new() { Minimum = 0, Maximum = 100, Value = 30, Width = 70, Anchor = AnchorStyles.Left };
-    readonly FlowLayoutPanel volumeRow = new() { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0, 6, 0, 0) };
+    readonly FlowLayoutPanel volumeRow = new() { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0, 10, 0, 0) };
     readonly ComboBox action = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
-    readonly CheckedListBox buttons = new() { CheckOnClick = true, Dock = DockStyle.Fill, IntegralHeight = false };
-    readonly Button record = new() { Text = RecordText, Height = 36, Dock = DockStyle.Fill };
+    // One checkbox per entry of PadButtons.All, same order
+    readonly ModernCheckBox[] buttons;
+    readonly Button record = new() { Text = RecordText, Height = 40, Dock = DockStyle.Fill, Tag = Theme.Primary };
     readonly Label hint = new()
     {
         Text = T("Klick auf „Aufnehmen“, drück die Tasten gleichzeitig am Controller und lass los.",
             "Click \"Record\", press the buttons together on your controller, then let go."),
         AutoSize = true,
-        MaximumSize = new Size(390, 0),
-        ForeColor = Color.DimGray,
-        Margin = new Padding(3, 4, 3, 8),
+        MaximumSize = new Size(420, 0),
+        Margin = new Padding(0, 8, 0, 8),
     };
     readonly System.Windows.Forms.Timer timer = new() { Interval = 20 };
     bool recording;
@@ -35,20 +35,21 @@ sealed class BindingDialog : Form
         this.currentVolume = currentVolume;
 
         Text = (existing == null ? T("Belegung hinzufügen", "Add binding") : T("Belegung bearbeiten", "Edit binding")) + $" ({PadButtons.TypeName(type)})";
-        Font = new Font("Segoe UI", 9.5f);
+        Font = Theme.BaseFont;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
-        Size = new Size(440, 660);
+        Size = new Size(500, 640);
 
+        // ---- Action card ----
         foreach (var a in PadActions.All) action.Items.Add(PadActions.Label(a));
         action.SelectedIndex = (int)(existing?.Action ?? PadAction.PlayPause);
         if (existing?.Volume is int v) volume.Value = Math.Clamp(v, 0, 100);
 
         // Only shown for "Set volume": the target the volume jumps to
-        var takeCurrent = new Button { Text = T("Aktuelle übernehmen", "Use current"), AutoSize = true, MinimumSize = new Size(0, 28) };
+        var takeCurrent = new Button { Text = T("Aktuelle übernehmen", "Use current"), AutoSize = true, MinimumSize = new Size(0, 30) };
         takeCurrent.Click += (_, _) =>
         {
             if (this.currentVolume() is int now) volume.Value = Math.Clamp(now, 0, 100);
@@ -56,41 +57,60 @@ sealed class BindingDialog : Form
         };
         volumeRow.Controls.AddRange(
         [
-            new Label { Text = T("Ziel-Lautstärke (%)", "Target volume (%)"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 8, 3) },
+            new Label { Text = T("Ziel-Lautstärke (%)", "Target volume (%)"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 7, 10, 3) },
             volume,
             takeCurrent,
         ]);
         action.SelectedIndexChanged += (_, _) => volumeRow.Visible = (PadAction)action.SelectedIndex == PadAction.SetVolume;
         volumeRow.Visible = (PadAction)action.SelectedIndex == PadAction.SetVolume;
 
-        for (int i = 0; i < PadButtons.All.Length; i++) buttons.Items.Add(PadButtons.Long(i, type));
+        var actionContent = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) };
+        actionContent.Controls.Add(action, 0, 0);
+        actionContent.Controls.Add(volumeRow, 0, 1);
+        var actionCard = new Card(T("Aktion", "Action"), actionContent);
+
+        // ---- Buttons card: record button and a two-column grid of checkboxes ----
+        var grid = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        buttons = new ModernCheckBox[PadButtons.All.Length];
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            buttons[i] = new ModernCheckBox { Text = PadButtons.Long(i, type), Margin = new Padding(0, 3, 8, 3) };
+            grid.Controls.Add(buttons[i], i % 2, i / 2);
+        }
         if (existing != null) SetChecked(existing.Mask);
+
+        hint.ForeColor = Theme.Subtle;
+        var buttonsContent = new TableLayoutPanel { ColumnCount = 1, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) };
+        buttonsContent.Controls.Add(record, 0, 0);
+        buttonsContent.Controls.Add(hint, 0, 1);
+        buttonsContent.Controls.Add(grid, 0, 2);
+        var buttonsCard = new Card(T("Tasten", "Buttons"), buttonsContent);
 
         record.Click += (_, _) => ToggleRecording();
         timer.Tick += (_, _) => PollRecording();
 
-        var ok = new Button { Text = "OK", AutoSize = true, MinimumSize = new Size(90, 30) };
+        // ---- Footer ----
+        var ok = new Button { Text = "OK", AutoSize = true, MinimumSize = new Size(100, 34), Tag = Theme.Primary };
         ok.Click += (_, _) => Confirm();
-        var cancel = new Button { Text = T("Abbrechen", "Cancel"), AutoSize = true, MinimumSize = new Size(90, 30), DialogResult = DialogResult.Cancel };
+        var cancel = new Button { Text = T("Abbrechen", "Cancel"), AutoSize = true, MinimumSize = new Size(100, 34), DialogResult = DialogResult.Cancel };
         AcceptButton = ok;
         CancelButton = cancel;
-
-        var footer = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) };
+        var footer = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) };
         footer.Controls.AddRange([cancel, ok]);
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1 };
-        for (int i = 0; i < 6; i++) root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16, 14, 16, 14), ColumnCount = 1 };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.Controls.Add(new Label { Text = T("Aktion", "Action"), AutoSize = true }, 0, 0);
-        root.Controls.Add(action, 0, 1);
-        root.Controls.Add(volumeRow, 0, 2);
-        root.Controls.Add(new Label { Text = T("Tasten", "Buttons"), AutoSize = true, Margin = new Padding(3, 12, 3, 3) }, 0, 3);
-        root.Controls.Add(record, 0, 4);
-        root.Controls.Add(hint, 0, 5);
-        root.Controls.Add(buttons, 0, 6);
-        root.Controls.Add(footer, 0, 7);
+        root.Controls.Add(actionCard, 0, 0);
+        root.Controls.Add(buttonsCard, 0, 1);
+        root.Controls.Add(new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) }, 0, 2);
+        root.Controls.Add(footer, 0, 3);
         Controls.Add(root);
+        Theme.Apply(this);
 
         // Don't trigger music actions while the user is pressing buttons to record a combo
         engine.Suspended = true;
@@ -104,14 +124,17 @@ sealed class BindingDialog : Form
 
     void SetChecked(uint mask)
     {
-        for (int i = 0; i < PadButtons.All.Length; i++)
-            buttons.SetItemChecked(i, (mask & (uint)PadButtons.All[i].Button) != 0);
+        var all = PadButtons.All;
+        for (int i = 0; i < buttons.Length; i++)
+            buttons[i].Checked = (mask & (uint)all[i].Button) != 0;
     }
 
     uint CheckedMask()
     {
+        var all = PadButtons.All;
         uint m = 0;
-        foreach (int i in buttons.CheckedIndices) m |= (uint)PadButtons.All[i].Button;
+        for (int i = 0; i < buttons.Length; i++)
+            if (buttons[i].Checked) m |= (uint)all[i].Button;
         return m;
     }
 

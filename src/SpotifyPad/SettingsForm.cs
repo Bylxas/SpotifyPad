@@ -13,27 +13,28 @@ sealed class SettingsForm : Form
         HeaderStyle = ColumnHeaderStyle.Nonclickable,
     };
     readonly NumericUpDown step = new() { Minimum = 1, Maximum = 25, Width = 70 };
-    readonly ComboBox volTarget = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
-    readonly CheckBox direct = new() { Text = T("Spotify direkt steuern (aus = globale Medientasten)", "Control Spotify directly (off = global media keys)"), AutoSize = true };
-    readonly CheckBox rumble = new() { Text = T("Kurz vibrieren als Bestätigung", "Short rumble as confirmation"), AutoSize = true };
-    readonly CheckBox autostart = new() { Text = T("Mit Windows starten", "Start with Windows"), AutoSize = true };
-    readonly CheckBox patchSpotify = new() { Text = T("Spotify immer mit Lautstärke-Steuerung starten (Autostart + Verknüpfungen)", "Always start Spotify with volume control (autostart + shortcuts)"), AutoSize = true };
-    readonly CheckBox autoRestart = new() { Text = T("Spotify automatisch neu starten, wenn die Lautstärke-Steuerung fehlt (Musik läuft danach weiter)", "Restart Spotify automatically when volume control is missing (music keeps playing)"), AutoSize = true };
-    readonly ComboBox language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
+    readonly ComboBox volTarget = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
+    readonly ModernCheckBox direct = new() { Switch = true, Text = T("Spotify direkt steuern (aus = globale Medientasten)", "Control Spotify directly (off = global media keys)"), AutoSize = true };
+    readonly ModernCheckBox rumble = new() { Switch = true, Text = T("Kurz vibrieren als Bestätigung", "Short rumble as confirmation"), AutoSize = true };
+    readonly ModernCheckBox autostart = new() { Switch = true, Text = T("Mit Windows starten", "Start with Windows"), AutoSize = true };
+    readonly ModernCheckBox patchSpotify = new() { Switch = true, Text = T("Spotify immer mit Lautstärke-Steuerung starten (Autostart + Verknüpfungen)", "Always start Spotify with volume control (autostart + shortcuts)"), AutoSize = true };
+    readonly ModernCheckBox autoRestart = new() { Switch = true, Text = T("Spotify automatisch neu starten, wenn die Lautstärke-Steuerung fehlt (Musik läuft danach weiter)", "Restart Spotify automatically when volume control is missing (music keeps playing)"), AutoSize = true };
+    readonly ComboBox language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
+    readonly ComboBox theme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
     readonly Label spotifyStatus = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 3, 3) };
     readonly System.Windows.Forms.Timer statusTimer = new() { Interval = 2000 };
-    readonly Label live = new() { AutoSize = true, ForeColor = Color.DimGray, Anchor = AnchorStyles.Left };
-    readonly ComboBox profile = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150, Anchor = AnchorStyles.Left };
-    readonly Label detected = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(12, 3, 3, 3) };
-    readonly Label header = new() { AutoSize = true, Margin = new Padding(0, 8, 0, 6) };
+    readonly Label live = new() { AutoSize = true, Anchor = AnchorStyles.Left };
+    readonly ComboBox profile = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160, Anchor = AnchorStyles.Left };
+    readonly Label detected = new() { AutoSize = true, Anchor = AnchorStyles.Right, Margin = new Padding(12, 10, 3, 3) };
+    readonly Label header = new() { AutoSize = true, Margin = new Padding(0, 6, 0, 8) };
     // Follow the detected controller until the user picks a profile by hand
     bool profileChosenByUser;
     bool settingProfile;
-    readonly ComboBox preset = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160, Anchor = AnchorStyles.Left };
+    readonly ComboBox preset = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180, Anchor = AnchorStyles.Left };
     bool settingPreset;
     readonly System.Windows.Forms.Timer timer = new() { Interval = 100 };
-    readonly ProgressBar volumeBar = new() { Maximum = 100, Width = 220, Height = 16, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 8, 3) };
-    readonly Label volumeText = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) };
+    readonly VolumeBar volumeBar = new() { Width = 300, Height = 10, Anchor = AnchorStyles.Left, Margin = new Padding(3, 9, 14, 3) };
+    readonly Label volumeText = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 3, 3, 3) };
     readonly System.Windows.Forms.Timer volumeTimer = new() { Interval = 400 };
     bool readingVolume;
 
@@ -47,16 +48,30 @@ sealed class SettingsForm : Form
 
         Text = T("SpotifyPad – Einstellungen", "SpotifyPad – Settings");
         Icon = TrayIcons.On;
-        Font = new Font("Segoe UI", 9.5f);
+        Font = Theme.BaseFont;
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
-        Size = new Size(660, 800);
-        MinimumSize = new Size(520, 520);
+        Size = new Size(720, 780);
+        MinimumSize = new Size(640, 640);
 
-        list.Columns.Add(T("Aktion", "Action"), 190);
-        list.Columns.Add(T("Tasten (gleichzeitig drücken)", "Buttons (press together)"), 360);
+        list.Columns.Add(T("Aktion", "Action"), 210);
+        list.Columns.Add(T("Tasten (gleichzeitig drücken)", "Buttons (press together)"), 380);
         list.DoubleClick += (_, _) => EditSelected();
+        // Last column fills the width, so no empty header block is left on the right
+        list.Resize += (_, _) => list.Columns[1].Width = Math.Max(120, list.ClientSize.Width - list.Columns[0].Width);
 
+        // ---- Title row: app name, version and the detected controller ----
+        var title = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0), Anchor = AnchorStyles.Left };
+        title.Controls.Add(new Label { Text = "♪ SpotifyPad", Font = Theme.TitleFont, AutoSize = true, Margin = new Padding(0, 0, 8, 0) });
+        title.Controls.Add(new Label { Text = "v" + Application.ProductVersion.Split('+')[0], ForeColor = Theme.Subtle, AutoSize = true, Margin = new Padding(0, 10, 0, 0) });
+        detected.Font = new Font(Theme.BaseFont, FontStyle.Bold);
+        var titleRow = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(2, 0, 2, 12) };
+        titleRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        titleRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        titleRow.Controls.Add(title, 0, 0);
+        titleRow.Controls.Add(detected, 1, 0);
+
+        // ---- Bindings card ----
         // Order matches PadType
         profile.Items.AddRange(["Xbox", "PlayStation"]);
         profile.SelectedIndexChanged += (_, _) =>
@@ -64,9 +79,6 @@ sealed class SettingsForm : Form
             if (!settingProfile) profileChosenByUser = true;
             RefreshList();
         };
-        detected.Font = new Font(Font, FontStyle.Bold);
-        var top = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0) };
-        top.Controls.AddRange([OptLabel(T("Profil für", "Profile for")), profile, detected]);
 
         preset.SelectedIndexChanged += (_, _) =>
         {
@@ -78,73 +90,93 @@ sealed class SettingsForm : Form
         more.Items.Add(T("Duplizieren", "Duplicate"), null, (_, _) => DuplicatePreset());
         more.Items.Add(T("Umbenennen…", "Rename…"), null, (_, _) => RenamePreset());
         more.Items.Add(T("Löschen", "Delete"), null, (_, _) => DeletePreset());
-        var moreButton = new Button { Text = "⋯", AutoSize = true, MinimumSize = new Size(40, 30) };
+        Theme.StyleMenu(more);
+        var moreButton = new Button { Text = "⋯", AutoSize = true, MinimumSize = new Size(40, 32) };
         moreButton.Click += (_, _) => more.Show(moreButton, new Point(0, moreButton.Height));
-        var presetRow = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0, 0, 0, 4) };
-        presetRow.Controls.AddRange(
+
+        var selectors = new TableLayoutPanel { ColumnCount = 6, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) };
+        selectors.Controls.Add(OptLabel("Preset"), 0, 0);
+        selectors.Controls.Add(preset, 1, 0);
+        var presetButtons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
+        presetButtons.Controls.AddRange(
         [
-            OptLabel("Preset"),
-            preset,
             SmallButton(T("Neu", "New"), (_, _) => NewPreset()),
             SmallButton(T("Teilen", "Share"), (_, _) => SharePreset()),
             SmallButton(T("Importieren", "Import"), (_, _) => ImportPreset()),
             moreButton,
         ]);
+        selectors.Controls.Add(presetButtons, 2, 0);
+        selectors.Controls.Add(OptLabel(T("Profil für", "Profile for")), 0, 1);
+        selectors.Controls.Add(profile, 1, 1);
 
-        var volumeRow = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0, 0, 0, 6) };
-        volumeRow.Controls.AddRange([OptLabel(T("🔊 Aktuelle Lautstärke", "🔊 Current volume")), volumeBar, volumeText]);
+        header.ForeColor = Theme.Subtle;
 
-        var bindButtons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 6, 0, 6) };
+        var bindButtons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 10, 0, 0) };
         bindButtons.Controls.AddRange(
         [
-            MakeButton(T("Hinzufügen", "Add"), (_, _) => AddBinding()),
+            MakeButton(T("Hinzufügen", "Add"), (_, _) => AddBinding(), primary: true),
             MakeButton(T("Bearbeiten", "Edit"), (_, _) => EditSelected()),
             MakeButton(T("Entfernen", "Remove"), (_, _) => RemoveSelected()),
             MakeButton(T("Standard", "Defaults"), (_, _) => ResetToDefaults()),
         ]);
 
+        var bindingsContent = new TableLayoutPanel { ColumnCount = 1, Dock = DockStyle.Fill, Margin = new Padding(0) };
+        bindingsContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        bindingsContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        bindingsContent.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        bindingsContent.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        bindingsContent.Controls.Add(selectors, 0, 0);
+        bindingsContent.Controls.Add(header, 0, 1);
+        bindingsContent.Controls.Add(list, 0, 2);
+        bindingsContent.Controls.Add(bindButtons, 0, 3);
+        var bindingsCard = new Card(T("Tastenbelegung", "Button bindings"), bindingsContent, fill: true);
+
+        // ---- Volume card ----
+        var volumeRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
+        volumeRow.Controls.AddRange([volumeBar, volumeText]);
+        var volumeCard = new Card(T("🔊 Aktuelle Lautstärke", "🔊 Current volume"), volumeRow);
+
+        // ---- Options card ----
         // Order matches VolumeTarget
         volTarget.Items.AddRange([T("Spotify-Regler in der App", "Spotify's own slider"), T("Systemlautstärke (alles)", "System volume (everything)"), T("Spotify im Windows-Mixer", "Spotify in the Windows mixer")]);
-        // Order matches AppLanguage
+        // Order matches AppLanguage / AppTheme
         language.Items.AddRange([T("Automatisch (Windows-Sprache)", "Automatic (Windows language)"), "Deutsch", "English"]);
+        theme.Items.AddRange([T("Automatisch (wie Windows)", "Automatic (like Windows)"), T("Hell", "Light"), T("Dunkel", "Dark")]);
 
-        var opts = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill };
-        opts.Controls.Add(OptLabel(T("Lautstärke-Schritt pro Druck (%)", "Volume step per press (%)")), 0, 0);
-        opts.Controls.Add(step, 1, 0);
-        opts.Controls.Add(OptLabel(T("Lauter/Leiser ändert", "Volume up/down changes")), 0, 1);
-        opts.Controls.Add(volTarget, 1, 1);
-        opts.Controls.Add(direct, 0, 2);
-        opts.SetColumnSpan(direct, 2);
-        opts.Controls.Add(rumble, 0, 3);
-        opts.SetColumnSpan(rumble, 2);
-        opts.Controls.Add(autostart, 0, 4);
-        opts.SetColumnSpan(autostart, 2);
-        opts.Controls.Add(patchSpotify, 0, 5);
-        opts.SetColumnSpan(patchSpotify, 2);
-        var restart = MakeButton(T("Spotify jetzt neu starten", "Restart Spotify now"), (_, _) => RestartSpotify());
-        opts.Controls.Add(autoRestart, 0, 6);
-        opts.SetColumnSpan(autoRestart, 2);
-        opts.Controls.Add(spotifyStatus, 0, 7);
-        opts.Controls.Add(restart, 1, 7);
-        opts.Controls.Add(OptLabel("Sprache / Language"), 0, 8);
-        opts.Controls.Add(language, 1, 8);
-
-        var group = new GroupBox
+        var opts = new TableLayoutPanel { ColumnCount = 2, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0) };
+        int row = 0;
+        void AddRow(string label, Control control)
         {
-            Text = T("Optionen", "Options"),
-            Dock = DockStyle.Fill,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(10, 6, 10, 6),
-        };
-        group.Controls.Add(opts);
+            opts.Controls.Add(OptLabel(label), 0, row);
+            opts.Controls.Add(control, 1, row++);
+        }
+        void AddWide(Control control)
+        {
+            opts.Controls.Add(control, 0, row);
+            opts.SetColumnSpan(control, 2);
+            row++;
+        }
+        AddRow(T("Lautstärke-Schritt pro Druck (%)", "Volume step per press (%)"), step);
+        AddRow(T("Lauter/Leiser ändert", "Volume up/down changes"), volTarget);
+        AddRow(T("Design", "Theme"), theme);
+        AddRow("Sprache / Language", language);
+        foreach (var box in new[] { direct, rumble, autostart, patchSpotify, autoRestart })
+        {
+            box.Margin = new Padding(3, 6, 3, 2);
+            AddWide(box);
+        }
+        opts.Controls.Add(spotifyStatus, 0, row);
+        opts.Controls.Add(MakeButton(T("Spotify jetzt neu starten", "Restart Spotify now"), (_, _) => RestartSpotify()), 1, row);
+        var optionsCard = new Card(T("Optionen", "Options"), opts);
 
-        var save = MakeButton(T("Speichern", "Save"), (_, _) => Save());
+        // ---- Bottom bar ----
+        live.ForeColor = Theme.Subtle;
+        var save = MakeButton(T("Speichern", "Save"), (_, _) => Save(), primary: true);
         var cancel = MakeButton(T("Abbrechen", "Cancel"), (_, _) => Close());
         AcceptButton = save;
         CancelButton = cancel;
 
-        var bottom = new TableLayoutPanel { ColumnCount = 3, Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(0, 10, 0, 0) };
+        var bottom = new TableLayoutPanel { ColumnCount = 3, Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(2, 0, 0, 0) };
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -152,24 +184,44 @@ sealed class SettingsForm : Form
         bottom.Controls.Add(save, 1, 0);
         bottom.Controls.Add(cancel, 2, 0);
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 8 };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        // ---- Two pages behind a tab bar, so the bindings list gets enough room ----
+        var bindingsPage = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, Margin = new Padding(0) };
+        bindingsPage.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        bindingsPage.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        bindingsPage.Controls.Add(bindingsCard, 0, 0);
+        bindingsPage.Controls.Add(volumeCard, 0, 1);
+        optionsCard.Dock = DockStyle.Top;
+        var optionsPage = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = new Padding(0), Visible = false };
+        optionsPage.Controls.Add(optionsCard);
+        var pages = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) };
+        pages.Controls.AddRange([bindingsPage, optionsPage]);
+
+        var tabBindings = TabButton(T("Belegung", "Bindings"));
+        var tabOptions = TabButton(T("Optionen", "Options"));
+        void ShowPage(bool options)
+        {
+            bindingsPage.Visible = !options;
+            optionsPage.Visible = options;
+            StyleTab(tabBindings, !options);
+            StyleTab(tabOptions, options);
+        }
+        tabBindings.Click += (_, _) => ShowPage(false);
+        tabOptions.Click += (_, _) => ShowPage(true);
+        var tabs = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 0, 0, 12) };
+        tabs.Controls.AddRange([tabBindings, tabOptions]);
+
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18, 14, 18, 14), ColumnCount = 1 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.Controls.Add(presetRow, 0, 0);
-        root.Controls.Add(top, 0, 1);
-        root.Controls.Add(header, 0, 2);
-        root.Controls.Add(list, 0, 3);
-        root.Controls.Add(bindButtons, 0, 4);
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.Controls.Add(volumeRow, 0, 5);
-        root.Controls.Add(group, 0, 6);
-        root.Controls.Add(bottom, 0, 7);
+        root.Controls.Add(titleRow, 0, 0);
+        root.Controls.Add(tabs, 0, 1);
+        root.Controls.Add(pages, 0, 2);
+        root.Controls.Add(bottom, 0, 3);
         Controls.Add(root);
+        Theme.Apply(this);
+        ShowPage(false);
 
         step.Value = Math.Clamp(Config.VolumeStep, 1, 25);
         volTarget.SelectedIndex = (int)Config.VolumeTarget;
@@ -179,6 +231,7 @@ sealed class SettingsForm : Form
         patchSpotify.Checked = Config.PatchSpotifyLaunch;
         autoRestart.Checked = Config.AutoRestartSpotify;
         language.SelectedIndex = (int)Config.Language;
+        theme.SelectedIndex = (int)Config.Theme;
         RefreshPresets();
         SetProfile(DetectedType() ?? PadType.Xbox);
 
@@ -199,16 +252,29 @@ sealed class SettingsForm : Form
         };
     }
 
-    static Button MakeButton(string text, EventHandler onClick)
+    static Button MakeButton(string text, EventHandler onClick, bool primary = false)
     {
-        var b = new Button { Text = text, AutoSize = true, MinimumSize = new Size(100, 30) };
+        var b = new Button { Text = text, AutoSize = true, MinimumSize = new Size(110, 34), Tag = primary ? Theme.Primary : null };
         b.Click += onClick;
         return b;
     }
 
+    static Button TabButton(string text) =>
+        new() { Text = text, AutoSize = true, MinimumSize = new Size(120, 34), Margin = new Padding(0, 0, 6, 0) };
+
+    /// <summary>Selected tab: card-colored with an accent outline and text; others blend into the background.</summary>
+    static void StyleTab(Button tab, bool selected)
+    {
+        tab.BackColor = selected ? Theme.Card : Theme.Back;
+        tab.ForeColor = selected ? Theme.Success : Theme.Subtle;
+        tab.Font = new Font(Theme.BaseFont, selected ? FontStyle.Bold : FontStyle.Regular);
+        tab.FlatAppearance.BorderColor = selected ? Theme.Accent : Theme.Border;
+        tab.FlatAppearance.MouseOverBackColor = selected ? Theme.Card : Theme.ControlHover;
+    }
+
     static Button SmallButton(string text, EventHandler onClick)
     {
-        var b = new Button { Text = text, AutoSize = true, MinimumSize = new Size(0, 30) };
+        var b = new Button { Text = text, AutoSize = true, MinimumSize = new Size(0, 32) };
         b.Click += onClick;
         return b;
     }
@@ -336,7 +402,7 @@ sealed class SettingsForm : Form
     }
 
     static Label OptLabel(string text) =>
-        new() { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 12, 6) };
+        new() { Text = text, AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 14, 8) };
 
     PadType Profile => (PadType)profile.SelectedIndex;
     List<PadBinding> Bindings => Config.BindingsFor(Profile);
@@ -366,7 +432,7 @@ sealed class SettingsForm : Form
             (false, true) => T("🎮 " + psName + "-Controller erkannt", "🎮 " + psName + " controller detected"),
             _ => T("Kein Controller erkannt", "No controller detected"),
         };
-        detected.ForeColor = xbox + ps > 0 ? Color.SeaGreen : Color.DarkOrange;
+        detected.ForeColor = xbox + ps > 0 ? Theme.Success : Theme.Warning;
 
         if (!profileChosenByUser && DetectedType() is { } type && type != Profile)
             SetProfile(type);
@@ -387,7 +453,7 @@ sealed class SettingsForm : Form
         readingVolume = false;
         if (IsDisposed) return;
 
-        volumeBar.Value = v ?? 0;
+        volumeBar.Value = v;
         string source = target switch
         {
             VolumeTarget.Spotify => T("Spotify-Regler", "Spotify slider"),
@@ -408,7 +474,7 @@ sealed class SettingsForm : Form
         spotifyStatus.Text = ok
             ? T("Lautstärke-Steuerung: aktiv ✓", "Volume control: active ✓")
             : T("Lautstärke-Steuerung: Spotify neu starten nötig", "Volume control: restart Spotify");
-        spotifyStatus.ForeColor = ok ? Color.SeaGreen : Color.DarkOrange;
+        spotifyStatus.ForeColor = ok ? Theme.Success : Theme.Warning;
     }
 
     void RestartSpotify()
@@ -487,6 +553,7 @@ sealed class SettingsForm : Form
         Config.Rumble = rumble.Checked;
         Config.AutoRestartSpotify = autoRestart.Checked;
         Config.Language = (AppLanguage)language.SelectedIndex;
+        Config.Theme = (AppTheme)theme.SelectedIndex;
         if (patchSpotify.Checked != Config.PatchSpotifyLaunch)
         {
             try

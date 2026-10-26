@@ -8,7 +8,7 @@ sealed class Prompt : Form
     Prompt(string title, string label, string value, bool multiline, bool readOnly)
     {
         Text = title;
-        Font = new Font("Segoe UI", 9.5f);
+        Font = Theme.BaseFont;
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
@@ -26,8 +26,8 @@ sealed class Prompt : Form
             Font = multiline ? new Font("Consolas", 9.5f) : Font,
         };
 
-        var ok = new Button { Text = "OK", AutoSize = true, MinimumSize = new Size(90, 30), DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = T("Abbrechen", "Cancel"), AutoSize = true, MinimumSize = new Size(90, 30), DialogResult = DialogResult.Cancel };
+        var ok = new Button { Text = "OK", AutoSize = true, MinimumSize = new Size(100, 34), DialogResult = DialogResult.OK, Tag = Theme.Primary };
+        var cancel = new Button { Text = T("Abbrechen", "Cancel"), AutoSize = true, MinimumSize = new Size(100, 34), DialogResult = DialogResult.Cancel };
         var footer = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 8, 0, 0) };
         if (readOnly)
         {
@@ -41,7 +41,7 @@ sealed class Prompt : Form
         }
         if (!multiline) AcceptButton = ok;
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1 };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 1 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(multiline ? SizeType.Percent : SizeType.AutoSize, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -49,6 +49,7 @@ sealed class Prompt : Form
         root.Controls.Add(box, 0, 1);
         root.Controls.Add(footer, 0, 2);
         Controls.Add(root);
+        Theme.Apply(this);
 
         Shown += (_, _) =>
         {

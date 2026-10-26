@@ -65,6 +65,7 @@ public sealed class AppConfig
 {
     public bool Enabled { get; set; } = true;
     public AppLanguage Language { get; set; } = AppLanguage.Auto;
+    public AppTheme Theme { get; set; } = AppTheme.Auto;
     public bool SpotifyDirect { get; set; } = true;
     public VolumeTarget VolumeTarget { get; set; } = VolumeTarget.Spotify;
     public int VolumeStep { get; set; } = 5;

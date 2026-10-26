@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SpotifyPad</AssemblyName>
     <RootNamespace>SpotifyPad</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>SpotifyPad</Product>
     <Description>Control Spotify with your game controller while gaming</Description>
     <!-- Low footprint: workstation GC without background GC thread, no ICU -->

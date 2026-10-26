@@ -49,6 +49,7 @@ sealed class TrayApp : ApplicationContext
     public TrayApp(EventWaitHandle showEvent, bool openSettings)
     {
         Lang.Apply(cfg.Language);
+        Theme.Init(cfg.Theme);
         engine.Apply(cfg);
         engine.Start();
         watcher = new SpotifyWatcher(() => cfg);
@@ -106,6 +107,7 @@ sealed class TrayApp : ApplicationContext
         menu.Items.Add(T("Spotify mit Lautstärke-Steuerung neu starten", "Restart Spotify with volume control"), null, (_, _) => RestartSpotify());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(T("Beenden", "Exit"), null, (_, _) => ExitThread());
+        Theme.StyleMenu(menu);
         return menu;
     }
 
@@ -160,14 +162,16 @@ sealed class TrayApp : ApplicationContext
             bool reopen = false;
             if (settings.Saved)
             {
-                // A language change rebuilds the menu and shows the settings again in the new language
-                reopen = settings.Config.Language != cfg.Language;
+                // A language or theme change rebuilds the menu and shows the settings again in the new look
+                reopen = settings.Config.Language != cfg.Language || settings.Config.Theme != cfg.Theme;
                 cfg = settings.Config;
                 cfg.Save();
                 engine.Apply(cfg);
                 if (reopen)
                 {
                     Lang.Apply(cfg.Language);
+                    Theme.Init(cfg.Theme);
+        Theme.Init(cfg.Theme);
                     var old = tray.ContextMenuStrip;
                     tray.ContextMenuStrip = BuildMenu();
                     old?.Dispose();
