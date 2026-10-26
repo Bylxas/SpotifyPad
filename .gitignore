@@ -1,0 +1,14 @@
+﻿# Build output
+bin/
+obj/
+publish/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Local copies for manual upload
+Upload/
+Download/
