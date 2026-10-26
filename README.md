@@ -18,6 +18,8 @@ Skip songs, pause and change Spotify's volume using button combinations on your 
 - **Button combinations** like `LB + RB + A` so you don't trigger things by accident while playing
 - **Holding volume up/down** keeps changing the volume and speeds up the longer you hold
 - **Moves Spotify's own volume slider** – your game volume stays untouched
+- **Volume presets** – one combo jumps straight to e.g. 30 %, another to 80 %
+- **Live volume display** in the settings window
 - **No focus stealing** – works in fullscreen/borderless games
 - **Xbox & PlayStation controllers** (DualShock 4, DualSense, DualSense Edge) with matching button names (`LB` / `L1`, `A` / `✕` …)
 - **Separate bindings per controller type**, detected automatically

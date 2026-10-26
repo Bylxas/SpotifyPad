@@ -32,6 +32,10 @@ sealed class SettingsForm : Form
     readonly ComboBox preset = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160, Anchor = AnchorStyles.Left };
     bool settingPreset;
     readonly System.Windows.Forms.Timer timer = new() { Interval = 100 };
+    readonly ProgressBar volumeBar = new() { Maximum = 100, Width = 220, Height = 16, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 8, 3) };
+    readonly Label volumeText = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 3, 3) };
+    readonly System.Windows.Forms.Timer volumeTimer = new() { Interval = 400 };
+    bool readingVolume;
 
     public AppConfig Config { get; }
     public bool Saved { get; private set; }
@@ -46,7 +50,7 @@ sealed class SettingsForm : Form
         Font = new Font("Segoe UI", 9.5f);
         AutoScaleMode = AutoScaleMode.Dpi;
         StartPosition = FormStartPosition.CenterScreen;
-        Size = new Size(660, 760);
+        Size = new Size(660, 800);
         MinimumSize = new Size(520, 520);
 
         list.Columns.Add(T("Aktion", "Action"), 190);
@@ -86,6 +90,9 @@ sealed class SettingsForm : Form
             SmallButton(T("Importieren", "Import"), (_, _) => ImportPreset()),
             moreButton,
         ]);
+
+        var volumeRow = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0, 0, 0, 6) };
+        volumeRow.Controls.AddRange([OptLabel(T("🔊 Aktuelle Lautstärke", "🔊 Current volume")), volumeBar, volumeText]);
 
         var bindButtons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 6, 0, 6) };
         bindButtons.Controls.AddRange(
@@ -145,7 +152,7 @@ sealed class SettingsForm : Form
         bottom.Controls.Add(save, 1, 0);
         bottom.Controls.Add(cancel, 2, 0);
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 7 };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1, RowCount = 8 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -158,8 +165,10 @@ sealed class SettingsForm : Form
         root.Controls.Add(header, 0, 2);
         root.Controls.Add(list, 0, 3);
         root.Controls.Add(bindButtons, 0, 4);
-        root.Controls.Add(group, 0, 5);
-        root.Controls.Add(bottom, 0, 6);
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.Controls.Add(volumeRow, 0, 5);
+        root.Controls.Add(group, 0, 6);
+        root.Controls.Add(bottom, 0, 7);
         Controls.Add(root);
 
         step.Value = Math.Clamp(Config.VolumeStep, 1, 25);
@@ -179,10 +188,14 @@ sealed class SettingsForm : Form
         statusTimer.Tick += (_, _) => UpdateSpotifyStatus();
         statusTimer.Start();
         UpdateSpotifyStatus();
+        volumeTimer.Tick += (_, _) => UpdateVolume();
+        volumeTimer.Start();
+        UpdateVolume();
         FormClosed += (_, _) =>
         {
             timer.Dispose();
             statusTimer.Dispose();
+            volumeTimer.Dispose();
         };
     }
 
@@ -362,6 +375,32 @@ sealed class SettingsForm : Form
         live.Text = xbox + ps == 0 ? "" : T("Gedrückt: ", "Pressed: ") + (p == 0 ? "–" : PadButtons.Format(p, Profile));
     }
 
+    VolumeTarget SelectedVolumeTarget => (VolumeTarget)volTarget.SelectedIndex;
+
+    /// <summary>Shows the live volume of whatever "Volume up/down changes" points at.</summary>
+    async void UpdateVolume()
+    {
+        if (readingVolume) return;
+        readingVolume = true;
+        var target = SelectedVolumeTarget;
+        int? v = await Task.Run(() => SpotifyControl.GetVolume(target));
+        readingVolume = false;
+        if (IsDisposed) return;
+
+        volumeBar.Value = v ?? 0;
+        string source = target switch
+        {
+            VolumeTarget.Spotify => T("Spotify-Regler", "Spotify slider"),
+            VolumeTarget.Mixer => T("Windows-Mixer", "Windows mixer"),
+            _ => T("System", "System"),
+        };
+        volumeText.Text = v is int p
+            ? $"{p} %  ({source})"
+            : target == VolumeTarget.Spotify
+                ? T("–  (Spotify bzw. Lautstärke-Steuerung nicht aktiv)", "–  (Spotify or volume control not active)")
+                : T("–  (Spotify spielt gerade nichts ab)", "–  (Spotify isn't playing)");
+    }
+
     async void UpdateSpotifyStatus()
     {
         bool ok = await Task.Run(SpotifyDevTools.IsAvailable);
@@ -394,7 +433,7 @@ sealed class SettingsForm : Form
             : T("Belegung für PlayStation-Controller – mehrere Tasten = Kombination (z. B. L1 + R1 + ✕).",
                 "Bindings for PlayStation controllers – several buttons = combination (e.g. L1 + R1 + ✕).");
         foreach (var b in Bindings)
-            list.Items.Add(new ListViewItem([PadActions.Label(b.Action), PadButtons.Format(b.Mask, Profile)]));
+            list.Items.Add(new ListViewItem([PadActions.Describe(b), PadButtons.Format(b.Mask, Profile)]));
         list.EndUpdate();
         if (select >= 0 && select < list.Items.Count)
         {
@@ -407,7 +446,7 @@ sealed class SettingsForm : Form
 
     void AddBinding()
     {
-        using var dlg = new BindingDialog(null, engine, Profile);
+        using var dlg = new BindingDialog(null, engine, Profile, () => SpotifyControl.GetVolume(SelectedVolumeTarget));
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
         Bindings.Add(dlg.Result);
         RefreshList(Bindings.Count - 1);
@@ -417,7 +456,7 @@ sealed class SettingsForm : Form
     {
         int i = SelectedIndex;
         if (i < 0) return;
-        using var dlg = new BindingDialog(Bindings[i], engine, Profile);
+        using var dlg = new BindingDialog(Bindings[i], engine, Profile, () => SpotifyControl.GetVolume(SelectedVolumeTarget));
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
         Bindings[i] = dlg.Result;
         RefreshList(i);

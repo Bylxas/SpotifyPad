@@ -5,6 +5,9 @@ sealed class BindingDialog : Form
 {
     readonly Engine engine;
     readonly PadType type;
+    readonly Func<int?> currentVolume;
+    readonly NumericUpDown volume = new() { Minimum = 0, Maximum = 100, Value = 30, Width = 70, Anchor = AnchorStyles.Left };
+    readonly FlowLayoutPanel volumeRow = new() { AutoSize = true, Dock = DockStyle.Fill, WrapContents = false, Margin = new Padding(0, 6, 0, 0) };
     readonly ComboBox action = new() { DropDownStyle = ComboBoxStyle.DropDownList, Dock = DockStyle.Fill };
     readonly CheckedListBox buttons = new() { CheckOnClick = true, Dock = DockStyle.Fill, IntegralHeight = false };
     readonly Button record = new() { Text = RecordText, Height = 36, Dock = DockStyle.Fill };
@@ -24,10 +27,12 @@ sealed class BindingDialog : Form
 
     static string RecordText => T("🎮  Kombination aufnehmen", "🎮  Record combination");
 
-    public BindingDialog(PadBinding? existing, Engine engine, PadType type)
+    /// <param name="currentVolume">Reads the volume right now, for "take current" on volume presets.</param>
+    public BindingDialog(PadBinding? existing, Engine engine, PadType type, Func<int?> currentVolume)
     {
         this.engine = engine;
         this.type = type;
+        this.currentVolume = currentVolume;
 
         Text = (existing == null ? T("Belegung hinzufügen", "Add binding") : T("Belegung bearbeiten", "Edit binding")) + $" ({PadButtons.TypeName(type)})";
         Font = new Font("Segoe UI", 9.5f);
@@ -36,10 +41,27 @@ sealed class BindingDialog : Form
         MaximizeBox = MinimizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterParent;
-        Size = new Size(440, 620);
+        Size = new Size(440, 660);
 
         foreach (var a in PadActions.All) action.Items.Add(PadActions.Label(a));
         action.SelectedIndex = (int)(existing?.Action ?? PadAction.PlayPause);
+        if (existing?.Volume is int v) volume.Value = Math.Clamp(v, 0, 100);
+
+        // Only shown for "Set volume": the target the volume jumps to
+        var takeCurrent = new Button { Text = T("Aktuelle übernehmen", "Use current"), AutoSize = true, MinimumSize = new Size(0, 28) };
+        takeCurrent.Click += (_, _) =>
+        {
+            if (this.currentVolume() is int now) volume.Value = Math.Clamp(now, 0, 100);
+            else MessageBox.Show(this, T("Die aktuelle Lautstärke konnte nicht gelesen werden.", "Couldn't read the current volume."), "SpotifyPad");
+        };
+        volumeRow.Controls.AddRange(
+        [
+            new Label { Text = T("Ziel-Lautstärke (%)", "Target volume (%)"), AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 6, 8, 3) },
+            volume,
+            takeCurrent,
+        ]);
+        action.SelectedIndexChanged += (_, _) => volumeRow.Visible = (PadAction)action.SelectedIndex == PadAction.SetVolume;
+        volumeRow.Visible = (PadAction)action.SelectedIndex == PadAction.SetVolume;
 
         for (int i = 0; i < PadButtons.All.Length; i++) buttons.Items.Add(PadButtons.Long(i, type));
         if (existing != null) SetChecked(existing.Mask);
@@ -57,20 +79,17 @@ sealed class BindingDialog : Form
         footer.Controls.AddRange([cancel, ok]);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 1 };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        for (int i = 0; i < 6; i++) root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.Controls.Add(new Label { Text = T("Aktion", "Action"), AutoSize = true }, 0, 0);
         root.Controls.Add(action, 0, 1);
-        root.Controls.Add(new Label { Text = T("Tasten", "Buttons"), AutoSize = true, Margin = new Padding(3, 12, 3, 3) }, 0, 2);
-        root.Controls.Add(record, 0, 3);
-        root.Controls.Add(hint, 0, 4);
-        root.Controls.Add(buttons, 0, 5);
-        root.Controls.Add(footer, 0, 6);
+        root.Controls.Add(volumeRow, 0, 2);
+        root.Controls.Add(new Label { Text = T("Tasten", "Buttons"), AutoSize = true, Margin = new Padding(3, 12, 3, 3) }, 0, 3);
+        root.Controls.Add(record, 0, 4);
+        root.Controls.Add(hint, 0, 5);
+        root.Controls.Add(buttons, 0, 6);
+        root.Controls.Add(footer, 0, 7);
         Controls.Add(root);
 
         // Don't trigger music actions while the user is pressing buttons to record a combo
@@ -139,7 +158,13 @@ sealed class BindingDialog : Form
             MessageBox.Show(this, T("Bitte mindestens eine Taste auswählen.", "Please select at least one button."), "SpotifyPad");
             return;
         }
-        Result = new PadBinding { Action = (PadAction)action.SelectedIndex, Buttons = PadBinding.FromMask(mask) };
+        var chosen = (PadAction)action.SelectedIndex;
+        Result = new PadBinding
+        {
+            Action = chosen,
+            Buttons = PadBinding.FromMask(mask),
+            Volume = chosen == PadAction.SetVolume ? (int)volume.Value : null,
+        };
         DialogResult = DialogResult.OK;
     }
 }

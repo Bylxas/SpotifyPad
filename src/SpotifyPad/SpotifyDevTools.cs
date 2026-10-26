@@ -21,6 +21,8 @@ static class SpotifyDevTools
     static readonly HttpClient http = new() { Timeout = TimeSpan.FromSeconds(1) };
     static ClientWebSocket? socket;
     static int nextId;
+    // The settings window reads the volume while the action worker changes it; both share one socket
+    static readonly object gate = new();
 
     /// <summary>Cheap check whether Spotify was started with the DevTools port.</summary>
     public static bool IsAvailable()
@@ -38,27 +40,39 @@ static class SpotifyDevTools
 
     /// <param name="deltaPercent">Percent to change, 0 = toggle mute.</param>
     /// <returns>false if Spotify is not reachable.</returns>
-    public static bool TryAdjustVolume(int deltaPercent) => Evaluate(VolumeScript.Replace("DELTA", deltaPercent.ToString())) == "ok";
+    public static bool TryAdjustVolume(int deltaPercent) =>
+        Volume(deltaPercent == 0 ? "mute" : "delta", deltaPercent) == "ok";
+
+    /// <returns>false if Spotify is not reachable.</returns>
+    public static bool TrySetVolume(int percent) => Volume("set", Math.Clamp(percent, 0, 100)) == "ok";
+
+    /// <summary>Spotify's slider position in percent, or null if Spotify is not reachable.</summary>
+    public static int? GetVolume() => int.TryParse(Volume("get", 0), out int v) ? v : null;
+
+    static string? Volume(string mode, int amount) => Evaluate($"({VolumeFunction})('{mode}', {amount})");
 
     // Reads the real volume from the progress bar (the range input snaps to 10 %), then sets the input
     // with step="any" so Spotify's React slider accepts fine values.
-    const string VolumeScript = """
-        (() => {
+    // mode: 'get' | 'set' (amount = target %) | 'delta' (amount = change in %) | 'mute' (toggle)
+    const string VolumeFunction = """
+        (mode, amount) => {
           const bar = document.querySelector('[data-testid="volume-bar"]');
           if (!bar) return 'missing';
-          const delta = DELTA;
           const input = bar.querySelector('input[type=range]');
           if (!input) return 'missing';
           const progress = bar.querySelector('[data-testid="progress-bar"]');
           let current = progress ? parseFloat(progress.style.getPropertyValue('--progress-bar-transform')) / 100 : NaN;
           if (isNaN(current)) current = parseFloat(input.value);
+          if (mode === 'get') return String(Math.round(current * 100));
           let next;
-          if (delta === 0) {
+          if (mode === 'mute') {
             // Mute via the slider (Spotify's mute button is too slow for quick toggles)
             if (current > 0) { window.__spotifyPadLast = current; next = 0; }
             else next = window.__spotifyPadLast || 0.3;
+          } else if (mode === 'set') {
+            next = amount / 100;
           } else {
-            next = Math.min(1, Math.max(0, Math.round(current * 100 + delta) / 100));
+            next = Math.min(1, Math.max(0, Math.round(current * 100 + amount) / 100));
           }
           const step = input.step;
           input.step = 'any';
@@ -67,27 +81,30 @@ static class SpotifyDevTools
           input.dispatchEvent(new Event('change', { bubbles: true }));
           input.step = step;
           return 'ok';
-        })()
+        }
         """;
 
     static string? Evaluate(string expression)
     {
-        for (int attempt = 0; attempt < 2; attempt++)
+        lock (gate)
         {
-            try
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                var s = Connect();
-                if (s == null) return null;
-                return Run(s, expression);
+                try
+                {
+                    var s = Connect();
+                    if (s == null) return null;
+                    return Run(s, expression);
+                }
+                catch
+                {
+                    // Spotify restarted or port closed: drop the socket and retry once
+                    socket?.Dispose();
+                    socket = null;
+                }
             }
-            catch
-            {
-                // Spotify restarted or port closed: drop the socket and retry once
-                socket?.Dispose();
-                socket = null;
-            }
+            return null;
         }
-        return null;
     }
 
     static ClientWebSocket? Connect()

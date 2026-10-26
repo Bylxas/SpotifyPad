@@ -21,10 +21,10 @@ static class SpotifyControl
 
     static IntPtr cachedWindow;
 
-    /// <param name="volumeDelta">Percent for volume actions; 0 uses the configured step.</param>
-    public static void Execute(PadAction action, AppConfig cfg, int volumeDelta = 0)
+    /// <param name="amount">Volume up/down: percent to change (0 = configured step). Set volume: target percent.</param>
+    public static void Execute(PadAction action, AppConfig cfg, int amount = 0)
     {
-        if (volumeDelta == 0) volumeDelta = cfg.VolumeStep;
+        int volumeDelta = amount == 0 ? cfg.VolumeStep : amount;
         switch (action)
         {
             case PadAction.PlayPause: Media(APPCOMMAND_MEDIA_PLAY_PAUSE, VK_MEDIA_PLAY_PAUSE, cfg); break;
@@ -33,6 +33,63 @@ static class SpotifyControl
             case PadAction.VolumeUp: Volume(+volumeDelta, VK_VOLUME_UP, cfg); break;
             case PadAction.VolumeDown: Volume(-volumeDelta, VK_VOLUME_DOWN, cfg); break;
             case PadAction.Mute: Volume(0, VK_VOLUME_MUTE, cfg); break;
+            case PadAction.SetVolume: SetVolume(amount, cfg.VolumeTarget); break;
+        }
+    }
+
+    static void SetVolume(int percent, VolumeTarget target)
+    {
+        percent = Math.Clamp(percent, 0, 100);
+        if (target == VolumeTarget.System)
+        {
+            AppAudio.SetSystemVolume(percent);
+            return;
+        }
+        var pids = SpotifyPids();
+        if (target == VolumeTarget.Spotify && pids.Count > 0 && SpotifyDevTools.TrySetVolume(percent)) return;
+        MixerVolume(pids, (sessions, ctx) =>
+        {
+            foreach (var s in sessions)
+            {
+                s.SetMasterVolume(percent / 100f, ref ctx);
+                if (percent > 0) s.SetMute(0, ref ctx);
+            }
+        });
+    }
+
+    /// <summary>The current volume in percent of what <paramref name="target"/> controls, or null if unknown.</summary>
+    public static int? GetVolume(VolumeTarget target)
+    {
+        switch (target)
+        {
+            case VolumeTarget.System:
+                return AppAudio.GetSystemVolume();
+            case VolumeTarget.Spotify:
+                // Only the slider itself: the mixer value would be misleading here
+                return SpotifyPids().Count > 0 ? SpotifyDevTools.GetVolume() : null;
+            default:
+                int? result = null;
+                MixerVolume(SpotifyPids(), (sessions, _) =>
+                {
+                    sessions[0].GetMasterVolume(out float level);
+                    sessions[0].GetMute(out int muted);
+                    result = muted != 0 ? 0 : (int)MathF.Round(level * 100);
+                });
+                return result;
+        }
+    }
+
+    /// <summary>Runs <paramref name="use"/> on Spotify's mixer sessions (if any) and releases them.</summary>
+    static void MixerVolume(HashSet<uint> pids, Action<List<ISimpleAudioVolume>, Guid> use)
+    {
+        var sessions = AppAudio.GetSessions(pids);
+        try
+        {
+            if (sessions.Count > 0) use(sessions, Guid.Empty);
+        }
+        finally
+        {
+            foreach (var s in sessions) Marshal.ReleaseComObject(s);
         }
     }
 
@@ -210,13 +267,69 @@ static class AppAudio
         return result;
     }
 
+    /// <summary>Windows master volume of the default output device in percent, or null.</summary>
+    public static int? GetSystemVolume()
+    {
+        int? result = null;
+        WithEndpointVolume(v =>
+        {
+            v.GetMasterVolumeLevelScalar(out float level);
+            result = (int)MathF.Round(level * 100);
+        });
+        return result;
+    }
+
+    public static void SetSystemVolume(int percent)
+    {
+        WithEndpointVolume(v =>
+        {
+            var ctx = Guid.Empty;
+            v.SetMasterVolumeLevelScalar(percent / 100f, ref ctx);
+        });
+    }
+
+    static void WithEndpointVolume(Action<IAudioEndpointVolume> use)
+    {
+        const int eRender = 0, eMultimedia = 1, CLSCTX_ALL = 23;
+        var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+        try
+        {
+            if (enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia, out var device) != 0) return;
+            var iid = typeof(IAudioEndpointVolume).GUID;
+            if (device.Activate(ref iid, CLSCTX_ALL, IntPtr.Zero, out object obj) == 0)
+            {
+                use((IAudioEndpointVolume)obj);
+                Marshal.ReleaseComObject(obj);
+            }
+            Marshal.ReleaseComObject(device);
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(enumerator);
+        }
+    }
+
     [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
     class MMDeviceEnumeratorCom { }
+
+    [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IAudioEndpointVolume
+    {
+        // Unused methods are declared to keep the vtable order
+        [PreserveSig] int RegisterControlChangeNotify(IntPtr notify);
+        [PreserveSig] int UnregisterControlChangeNotify(IntPtr notify);
+        [PreserveSig] int GetChannelCount(out uint count);
+        [PreserveSig] int SetMasterVolumeLevel(float levelDb, ref Guid context);
+        [PreserveSig] int SetMasterVolumeLevelScalar(float level, ref Guid context);
+        [PreserveSig] int GetMasterVolumeLevel(out float levelDb);
+        [PreserveSig] int GetMasterVolumeLevelScalar(out float level);
+    }
 
     [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     interface IMMDeviceEnumerator
     {
         [PreserveSig] int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDeviceCollection devices);
+        [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice device);
     }
 
     [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

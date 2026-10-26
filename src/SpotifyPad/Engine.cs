@@ -10,6 +10,8 @@ sealed class Engine : IDisposable
     {
         public uint Mask;
         public PadAction Action;
+        // Target percent for SetVolume, 0 otherwise (volume up/down then use the configured step)
+        public int Value;
         // Bindings that contain all of this binding's buttons plus more (e.g. LB+RB+A for LB+RB)
         public Compiled[] Supersets = [];
         public bool Pending;
@@ -68,7 +70,7 @@ sealed class Engine : IDisposable
     {
         var list = bindings
             .Where(b => b.Mask != 0)
-            .Select(b => new Compiled { Mask = b.Mask, Action = b.Action })
+            .Select(b => new Compiled { Mask = b.Mask, Action = b.Action, Value = b.Volume ?? 0 })
             .ToArray();
         foreach (var c in list)
             c.Supersets = list.Where(o => o.Mask != c.Mask && (o.Mask & c.Mask) == c.Mask).ToArray();
@@ -184,7 +186,7 @@ sealed class Engine : IDisposable
                 // No bigger combo builds on this one: fire as soon as all buttons are down
                 if (full && !was)
                 {
-                    Fire(cfg, b.Action, 0, connected, t);
+                    Fire(cfg, b.Action, b.Value, connected, t);
                     b.HeldSince = t;
                     b.NextRepeat = t + RepeatDelayMs;
                 }
@@ -212,18 +214,18 @@ sealed class Engine : IDisposable
             if (b.Pending && !full)
             {
                 b.Pending = false;
-                Fire(cfg, b.Action, 0, connected, t);
+                Fire(cfg, b.Action, b.Value, connected, t);
             }
         }
     }
 
     static bool IsRepeatable(PadAction a) => a is PadAction.VolumeUp or PadAction.VolumeDown;
 
-    void Fire(AppConfig cfg, PadAction action, int volumeDelta, bool[] connected, long t, bool repeat = false)
+    void Fire(AppConfig cfg, PadAction action, int amount, bool[] connected, long t, bool repeat = false)
     {
         // Drop repeats if the worker falls behind, so volume doesn't keep moving after release
         if (!repeat || actions.Count < 2)
-            actions.Add((action, volumeDelta, cfg));
+            actions.Add((action, amount, cfg));
 
         if (!repeat && cfg.Rumble)
         {

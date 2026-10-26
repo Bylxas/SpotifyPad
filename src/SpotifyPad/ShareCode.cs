@@ -13,7 +13,8 @@ static class ShareCode
     const int MaxBindings = 64;
     const int MaxNameLength = 40;
 
-    // Compact wire format: n = name, x / p = Xbox / PlayStation bindings as [action, buttonMask],
+    // Compact wire format: n = name, x / p = Xbox / PlayStation bindings as [action, buttonMask]
+    // or [action, buttonMask, volume%] for volume presets,
     // s = controller type the sharer uses (missing in older codes)
     sealed record Dto(string n, uint[][] x, uint[][] p, int? s = null);
 
@@ -99,14 +100,14 @@ static class ShareCode
     {
         if (imported.Source is not { } source || source == target) return false;
         var list = imported.Preset.For(source)
-            .Select(b => new PadBinding { Action = b.Action, Buttons = [.. b.Buttons] })
+            .Select(b => new PadBinding { Action = b.Action, Buttons = [.. b.Buttons], Volume = b.Volume })
             .ToList();
         imported.Preset.Set(target, list);
         return true;
     }
 
     static uint[][] Pack(List<PadBinding> bindings) =>
-        bindings.Select(b => new[] { (uint)b.Action, b.Mask }).ToArray();
+        bindings.Select(b => b.Volume is int v ? new[] { (uint)b.Action, b.Mask, (uint)v } : new[] { (uint)b.Action, b.Mask }).ToArray();
 
     static List<PadBinding> Unpack(uint[][]? items)
     {
@@ -117,10 +118,14 @@ static class ShareCode
         var list = new List<PadBinding>();
         foreach (var item in items)
         {
-            if (item is not [var action, var mask]) throw new FormatException(T("Ungültige Belegung im Code.", "Invalid binding in the code."));
-            if (!Enum.IsDefined((PadAction)action) || mask == 0 || (mask & ~known) != 0)
-                throw new FormatException(T("Ungültige Belegung im Code.", "Invalid binding in the code."));
-            list.Add(new PadBinding { Action = (PadAction)action, Buttons = PadBinding.FromMask(mask) });
+            var invalid = new FormatException(T("Ungültige Belegung im Code.", "Invalid binding in the code."));
+            if (item is not ([_, _] or [_, _, _])) throw invalid;
+            uint action = item[0], mask = item[1];
+            int? volume = item.Length == 3 ? (int)item[2] : null;
+            if (!Enum.IsDefined((PadAction)action) || mask == 0 || (mask & ~known) != 0 || volume > 100) throw invalid;
+            if ((PadAction)action == PadAction.SetVolume) volume ??= 30;
+            else volume = null;
+            list.Add(new PadBinding { Action = (PadAction)action, Buttons = PadBinding.FromMask(mask), Volume = volume });
         }
         return list;
     }

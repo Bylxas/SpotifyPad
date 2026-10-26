@@ -4,7 +4,8 @@ using System.Text.Json.Serialization;
 
 namespace SpotifyPad;
 
-public enum PadAction { PlayPause, Next, Previous, VolumeUp, VolumeDown, Mute }
+// Append only: share codes store the numeric value
+public enum PadAction { PlayPause, Next, Previous, VolumeUp, VolumeDown, Mute, SetVolume }
 
 /// <summary>Spotify = slider inside the Spotify app, Mixer = Windows volume mixer entry, System = master volume.</summary>
 public enum VolumeTarget { Spotify, System, Mixer }
@@ -21,14 +22,21 @@ public static class PadActions
         PadAction.VolumeUp => T("Lauter", "Volume up"),
         PadAction.VolumeDown => T("Leiser", "Volume down"),
         PadAction.Mute => T("Stumm an/aus", "Mute on/off"),
+        PadAction.SetVolume => T("Lautstärke setzen", "Set volume"),
         _ => a.ToString(),
     };
+
+    /// <summary>Label for a binding, including the target of a volume preset.</summary>
+    public static string Describe(PadBinding b) =>
+        b.Action == PadAction.SetVolume ? T($"Lautstärke auf {b.Volume ?? 0} %", $"Volume to {b.Volume ?? 0} %") : Label(b.Action);
 }
 
 public sealed class PadBinding
 {
     public PadAction Action { get; set; }
     public List<PadButton> Buttons { get; set; } = [];
+    /// <summary>Target volume in percent for <see cref="PadAction.SetVolume"/>; null for other actions.</summary>
+    public int? Volume { get; set; }
 
     [JsonIgnore]
     public uint Mask => Buttons.Aggregate(0u, (m, b) => m | (uint)b);
