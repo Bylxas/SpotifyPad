@@ -206,6 +206,9 @@ static class SpotifyLauncher
     /// <summary>Adds or removes the flag on Spotify's autostart entry and its Start menu / desktop shortcuts.</summary>
     public static void Patch(bool enable)
     {
+        // Spicetify restarts Spotify itself after "spicetify apply"; give it the flag too
+        try { PatchSpicetify(enable); } catch { }
+
         using (var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true))
         {
             if (key?.GetValue("Spotify") is string v)
@@ -228,6 +231,34 @@ static class SpotifyLauncher
             link.Arguments = WithFlag((string)link.Arguments, enable);
             link.Save();
         }
+    }
+
+    /// <summary>Adds or removes the flag in Spicetify's "spotify_launch_flags" (flags are separated by "|").</summary>
+    static void PatchSpicetify(bool enable)
+    {
+        string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "spicetify", "config-xpui.ini");
+        if (!File.Exists(path)) return;
+
+        string text = File.ReadAllText(path);
+        string newline = text.Contains("\r\n") ? "\r\n" : "\n";
+        var lines = text.Split(newline);
+        bool changed = false;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            int eq = lines[i].IndexOf('=');
+            if (eq < 0 || lines[i][..eq].Trim() != "spotify_launch_flags") continue;
+            var flags = lines[i][(eq + 1)..].Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(f => f != Flag)
+                .ToList();
+            if (enable) flags.Add(Flag);
+            string updated = lines[i][..(eq + 1)] + " " + string.Join("|", flags);
+            if (updated.TrimEnd() != lines[i].TrimEnd())
+            {
+                lines[i] = updated.TrimEnd();
+                changed = true;
+            }
+        }
+        if (changed) File.WriteAllText(path, string.Join(newline, lines));
     }
 
     static string WithFlag(string args, bool enable)

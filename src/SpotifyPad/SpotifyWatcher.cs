@@ -15,6 +15,8 @@ sealed class SpotifyWatcher : IDisposable
     // Never restart more often than this, and give up after a few tries in case Spotify ignores the flag
     const int MinGapMs = 120000;
     const int MaxFailedRestarts = 2;
+    // After giving up, try again after this long (e.g. Spicetify restarted Spotify several times while applying)
+    const int RetryAfterMs = 300000;
     // How long to wait for the restarted Spotify before resuming playback
     const int ResumeTimeoutMs = 30000;
     const int ResumeDelayMs = 2500;
@@ -54,15 +56,18 @@ sealed class SpotifyWatcher : IDisposable
             if (main.Id == checkedPid) return;
             var age = DateTime.Now - StartTime(main);
             if (age.TotalMilliseconds < SettleMs) return;
-            checkedPid = main.Id;
 
             if (SpotifyDevTools.IsAvailable())
             {
+                checkedPid = main.Id;
                 failedRestarts = 0;
                 return;
             }
             long now = Environment.TickCount64;
+            if (failedRestarts >= MaxFailedRestarts && now - lastRestart >= RetryAfterMs) failedRestarts = 0;
+            // Not marked as checked: this Spotify is looked at again on later ticks
             if (failedRestarts >= MaxFailedRestarts || now - lastRestart < MinGapMs) return;
+            checkedPid = main.Id;
             lastRestart = now;
             failedRestarts++;
 
