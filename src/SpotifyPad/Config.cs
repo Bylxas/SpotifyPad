@@ -74,6 +74,8 @@ public sealed class AppConfig
     public bool PatchSpotifyLaunch { get; set; }
     /// <summary>Restart Spotify with the DevTools flag when it gets opened without it.</summary>
     public bool AutoRestartSpotify { get; set; } = true;
+    /// <summary>Look for new SpotifyPad releases on GitHub.</summary>
+    public bool CheckForUpdates { get; set; } = true;
     /// <summary>Start SpotifyPad with Windows; null in older configs (then taken from the registry).</summary>
     public bool? StartWithWindows { get; set; }
     public int TriggerThreshold { get; set; } = 128;

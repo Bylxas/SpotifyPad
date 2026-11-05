@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
@@ -6,11 +7,28 @@ namespace SpotifyPad;
 
 static class Program
 {
+    static Mutex? instance;
+
     [STAThread]
     static void Main(string[] args)
     {
+        // After an update the old version passes its process id: let it exit before taking over
+        int wait = Array.IndexOf(args, "--wait-pid");
+        if (wait >= 0 && wait + 1 < args.Length && int.TryParse(args[wait + 1], out int oldPid))
+        {
+            try
+            {
+                using var old = Process.GetProcessById(oldPid);
+                old.WaitForExit(15000);
+            }
+            catch
+            {
+                // Already gone
+            }
+        }
+
         using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "SpotifyPad_Show");
-        using var mutex = new Mutex(true, "SpotifyPad_SingleInstance", out bool first);
+        instance = new Mutex(true, "SpotifyPad_SingleInstance", out bool first);
         if (!first)
         {
             // Already running: ask that instance to open its settings window
@@ -22,7 +40,17 @@ static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         // Autostart passes --tray to start silently; a manual start opens the settings
-        Application.Run(new TrayApp(showEvent, openSettings: !args.Contains("--tray")));
+        Application.Run(new TrayApp(showEvent, openSettings: !args.Contains("--tray"), updated: args.Contains("--updated")));
+        ReleaseSingleInstance();
+    }
+
+    /// <summary>Lets another SpotifyPad start, e.g. the new version right after an update.</summary>
+    public static void ReleaseSingleInstance()
+    {
+        if (instance == null) return;
+        try { instance.ReleaseMutex(); } catch { }
+        instance.Dispose();
+        instance = null;
     }
 
     /// <summary>Frees memory after UI was shown so the tray app stays tiny in the background.</summary>
@@ -41,12 +69,14 @@ sealed class TrayApp : ApplicationContext
 {
     readonly Engine engine = new();
     readonly SpotifyWatcher watcher;
+    readonly UpdateManager updates;
+    ToolStripMenuItem updateItem = null!;
     readonly NotifyIcon tray;
     ToolStripMenuItem enabledItem = null!;
     AppConfig cfg = AppConfig.Load();
     SettingsForm? settings;
 
-    public TrayApp(EventWaitHandle showEvent, bool openSettings)
+    public TrayApp(EventWaitHandle showEvent, bool openSettings, bool updated)
     {
         Lang.Apply(cfg.Language);
         Theme.Init(cfg.Theme);
@@ -74,10 +104,18 @@ sealed class TrayApp : ApplicationContext
 
         tray = new NotifyIcon { ContextMenuStrip = BuildMenu(), Visible = true };
         tray.DoubleClick += (_, _) => OpenSettings();
+        tray.BalloonTipClicked += (_, _) => OpenSettings();
         UpdateIcon();
 
         // The ContextMenuStrip installed the WinForms sync context for this thread
         var ui = SynchronizationContext.Current!;
+        updates = new UpdateManager(ui, () => cfg, tray, ExitThread);
+        updates.Changed += UpdateMenu;
+        if (updated)
+        {
+            Updater.CleanupOld();
+            tray.ShowBalloonTip(5000, "SpotifyPad", T($"Aktualisiert auf v{Updater.Current.ToString(3)} ✓", $"Updated to v{Updater.Current.ToString(3)} ✓"), ToolTipIcon.Info);
+        }
         ThreadPool.RegisterWaitForSingleObject(showEvent, (_, _) => ui.Post(_ => OpenSettings(), null), null, -1, false);
         if (openSettings)
             ui.Post(_ => OpenSettings(), null);
@@ -89,7 +127,9 @@ sealed class TrayApp : ApplicationContext
     ContextMenuStrip BuildMenu()
     {
         enabledItem = new ToolStripMenuItem(T("Aktiv", "Active"), null, (_, _) => ToggleEnabled()) { Checked = cfg.Enabled };
+        updateItem = new ToolStripMenuItem("", null, (_, _) => updates.Install()) { Visible = false, Font = new Font(Theme.BaseFont, FontStyle.Bold) };
         var menu = new ContextMenuStrip();
+        menu.Items.Add(updateItem);
         menu.Items.Add(enabledItem);
         var presetMenu = new ToolStripMenuItem("Preset");
         menu.Items.Add(presetMenu);
@@ -108,7 +148,19 @@ sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(T("Beenden", "Exit"), null, (_, _) => ExitThread());
         Theme.StyleMenu(menu);
+        UpdateMenu();
         return menu;
+    }
+
+    /// <summary>Shows "Update to vX" at the top of the tray menu while an update is available.</summary>
+    void UpdateMenu()
+    {
+        // Called from BuildMenu before the update manager exists
+        var release = updates?.Available;
+        updateItem.Visible = release != null;
+        updateItem.Enabled = updates?.Busy != true;
+        if (release != null)
+            updateItem.Text = updates!.Busy ? updates.Status : T($"⬆ Update auf {release.Tag} installieren", $"⬆ Install update {release.Tag}");
     }
 
     static void RestartSpotify()
@@ -156,7 +208,7 @@ sealed class TrayApp : ApplicationContext
             return;
         }
 
-        settings = new SettingsForm(cfg, engine);
+        settings = new SettingsForm(cfg, engine, updates);
         settings.FormClosed += (_, _) =>
         {
             bool reopen = false;
@@ -192,6 +244,7 @@ sealed class TrayApp : ApplicationContext
         tray.Visible = false;
         tray.Dispose();
         watcher.Dispose();
+        updates.Dispose();
         engine.Dispose();
         base.ExitThreadCore();
     }

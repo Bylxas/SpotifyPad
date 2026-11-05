@@ -29,6 +29,7 @@ Skip songs, pause and change Spotify's volume using button combinations on your 
 - **Starts with Windows** (optional) and makes sure Spotify starts with volume control
 - **English & German** UI (follows your Windows language, or pick one)
 - **Dark & light mode** with a modern look (follows your Windows theme, or pick one)
+- **Automatic updates** – SpotifyPad checks GitHub for new versions; one click on **Update** downloads, verifies (SHA-256) and installs it
 
 ## Download & setup
 
@@ -40,6 +41,17 @@ Skip songs, pause and change Spotify's volume using button combinations on your 
 4. Click **Save**. Done – SpotifyPad now lives in your system tray (♪ icon, maybe behind the `^` arrow).
 
 Double-click the tray icon to open the settings again. Right-click it for presets, pause and exit.
+
+### Updates
+
+From version 1.3.0 on, SpotifyPad keeps itself up to date:
+
+- Shortly after starting and then every 6 hours it checks this repository's [latest release](../../releases/latest).
+- When there's a newer version you get a notification, an **⬆ Update** entry in the tray menu and a banner in the settings window.
+- One click on **Update** downloads the new `SpotifyPad.exe`, checks it against the SHA-256 checksum GitHub publishes, replaces the old exe and restarts. Settings, presets and autostart are kept.
+- Turn automatic checks off or use **Check now** under **Options**.
+
+> Coming from 1.2.1 or older? Download 1.3.0 once by hand – those versions don't have the updater yet.
 
 ### Requirements
 
@@ -70,8 +82,11 @@ Change them in the settings: **Add** / **Edit** → **Record combination** → p
 | Spotify's volume slider | Spotify is built on Chromium. SpotifyPad starts Spotify with `--remote-debugging-port=9333` and moves the slider through the Chrome DevTools Protocol – no focus change |
 | Fallback volume | If that port isn't available, SpotifyPad changes Spotify's entry in the Windows volume mixer instead |
 | Controllers | Xbox via XInput, PlayStation via the Windows joystick API (winmm) |
+| Updates | Asks the GitHub Releases API for the latest release, downloads the `SpotifyPad.exe` asset only from this repository, verifies its SHA-256 digest, then renames the running exe to `*.old.exe` (Windows allows renaming a running file), puts the new one in its place and starts it |
 
 If Spotify gets started without the debugging port (e.g. after a Spotify update), SpotifyPad restarts it automatically and resumes playback.
+
+**Using [Spicetify](https://spicetify.app)?** That works too – SpotifyPad adds its launch flag to Spicetify's `spotify_launch_flags`, so Spotify keeps volume control after `spicetify apply` restarts it.
 
 ### ⚠️ Security note
 
@@ -80,6 +95,8 @@ The Chromium debugging port is **only reachable from your own PC** (`127.0.0.1`)
 ## Where are settings stored?
 
 `%APPDATA%\SpotifyPad\config.json` – delete it to reset everything. Autostart is a normal entry in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+SpotifyPad only connects to the internet to check for updates (`api.github.com` and the release download). It sends no data about you or your usage – just a standard request for the latest release.
 
 ## Build from source
 
@@ -107,6 +124,9 @@ dotnet publish src/SpotifyPad/SpotifyPad.csproj -c Release -r win-x64 --self-con
 ```
 src/SpotifyPad/
   Program.cs          Entry point, tray icon & menu, autostart
+  Updater.cs          GitHub release check, verified download, exe swap
+  UpdateManager.cs    Update notifications and the "Update" action
+  Theme.cs            Dark/light theme, cards, switches, volume bar
   Engine.cs           Controller polling, combo detection, action queue
   XInput.cs           Xbox (XInput) and PlayStation (winmm) input, button names
   SpotifyControl.cs   Play/pause/skip via WM_APPCOMMAND, mixer volume fallback
@@ -132,6 +152,8 @@ src/SpotifyPad/
 
 Standard-Tasten: `LB + RB` (bzw. `L1 + R1`) halten und dann `A`/`✕` = Pause, `→` / `←` = Skip / Zurück, `↑` / `↓` = Lauter / Leiser, `Y`/`△` = Stumm.
 Eigene Belegungen, Presets und Teilen-Codes findest du in den Einstellungen. Die App-Sprache folgt deiner Windows-Sprache und lässt sich unter **Sprache / Language** umstellen.
+
+**Updates:** Ab Version 1.3.0 sucht SpotifyPad selbst nach neuen Versionen. Gibt es eine, erscheint ein Hinweis – ein Klick auf **Update** lädt, prüft und installiert sie. Wer noch 1.2.1 oder älter hat, lädt 1.3.0 einmal von Hand herunter.
 
 ---
 

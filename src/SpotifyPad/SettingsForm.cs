@@ -19,6 +19,12 @@ sealed class SettingsForm : Form
     readonly ModernCheckBox autostart = new() { Switch = true, Text = T("Mit Windows starten", "Start with Windows"), AutoSize = true };
     readonly ModernCheckBox patchSpotify = new() { Switch = true, Text = T("Spotify immer mit Lautstärke-Steuerung starten (Autostart + Verknüpfungen)", "Always start Spotify with volume control (autostart + shortcuts)"), AutoSize = true };
     readonly ModernCheckBox autoRestart = new() { Switch = true, Text = T("Spotify automatisch neu starten, wenn die Lautstärke-Steuerung fehlt (Musik läuft danach weiter)", "Restart Spotify automatically when volume control is missing (music keeps playing)"), AutoSize = true };
+    readonly ModernCheckBox checkUpdates = new() { Switch = true, Text = T("Automatisch nach Updates suchen", "Check for updates automatically"), AutoSize = true };
+    readonly Label updateStatus = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 3, 3) };
+    readonly Label bannerText = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(0, 8, 14, 0) };
+    readonly Button bannerButton = new() { Text = T("⬆  Update", "⬆  Update"), AutoSize = true, MinimumSize = new Size(120, 34), Tag = Theme.Primary };
+    Card? banner;
+    readonly UpdateManager updates;
     readonly ComboBox language = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
     readonly ComboBox theme = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280 };
     readonly Label spotifyStatus = new() { AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 8, 3, 3) };
@@ -41,9 +47,10 @@ sealed class SettingsForm : Form
     public AppConfig Config { get; }
     public bool Saved { get; private set; }
 
-    public SettingsForm(AppConfig cfg, Engine engine)
+    public SettingsForm(AppConfig cfg, Engine engine, UpdateManager updates)
     {
         this.engine = engine;
+        this.updates = updates;
         Config = cfg.Clone();
 
         Text = T("SpotifyPad – Einstellungen", "SpotifyPad – Settings");
@@ -70,6 +77,17 @@ sealed class SettingsForm : Form
         titleRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         titleRow.Controls.Add(title, 0, 0);
         titleRow.Controls.Add(detected, 1, 0);
+
+        // ---- Update banner (only while an update is available) ----
+        bannerText.Font = new Font(Theme.BaseFont, FontStyle.Bold);
+        bannerButton.Click += (_, _) => updates.Install(this);
+        var notes = SmallButton(T("Was ist neu?", "What's new?"), (_, _) =>
+        {
+            if (updates.Available is { } r) Updater.OpenReleasePage(r.PageUrl);
+        });
+        var bannerRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
+        bannerRow.Controls.AddRange([bannerText, bannerButton, notes]);
+        banner = new Card(null, bannerRow) { Visible = false };
 
         // ---- Bindings card ----
         // Order matches PadType
@@ -160,13 +178,15 @@ sealed class SettingsForm : Form
         AddRow(T("Lauter/Leiser ändert", "Volume up/down changes"), volTarget);
         AddRow(T("Design", "Theme"), theme);
         AddRow("Sprache / Language", language);
-        foreach (var box in new[] { direct, rumble, autostart, patchSpotify, autoRestart })
+        foreach (var box in new[] { direct, rumble, autostart, patchSpotify, autoRestart, checkUpdates })
         {
             box.Margin = new Padding(3, 6, 3, 2);
             AddWide(box);
         }
         opts.Controls.Add(spotifyStatus, 0, row);
-        opts.Controls.Add(MakeButton(T("Spotify jetzt neu starten", "Restart Spotify now"), (_, _) => RestartSpotify()), 1, row);
+        opts.Controls.Add(MakeButton(T("Spotify jetzt neu starten", "Restart Spotify now"), (_, _) => RestartSpotify()), 1, row++);
+        opts.Controls.Add(updateStatus, 0, row);
+        opts.Controls.Add(MakeButton(T("Jetzt suchen", "Check now"), (_, _) => _ = updates.CheckAsync(manual: true)), 1, row);
         var optionsCard = new Card(T("Optionen", "Options"), opts);
 
         // ---- Bottom bar ----
@@ -213,12 +233,14 @@ sealed class SettingsForm : Form
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18, 14, 18, 14), ColumnCount = 1 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.Controls.Add(titleRow, 0, 0);
-        root.Controls.Add(tabs, 0, 1);
-        root.Controls.Add(pages, 0, 2);
-        root.Controls.Add(bottom, 0, 3);
+        root.Controls.Add(banner, 0, 1);
+        root.Controls.Add(tabs, 0, 2);
+        root.Controls.Add(pages, 0, 3);
+        root.Controls.Add(bottom, 0, 4);
         Controls.Add(root);
         Theme.Apply(this);
         ShowPage(false);
@@ -232,6 +254,9 @@ sealed class SettingsForm : Form
         autoRestart.Checked = Config.AutoRestartSpotify;
         language.SelectedIndex = (int)Config.Language;
         theme.SelectedIndex = (int)Config.Theme;
+        checkUpdates.Checked = Config.CheckForUpdates;
+        updates.Changed += UpdateBanner;
+        UpdateBanner();
         RefreshPresets();
         SetProfile(DetectedType() ?? PadType.Xbox);
 
@@ -246,6 +271,7 @@ sealed class SettingsForm : Form
         UpdateVolume();
         FormClosed += (_, _) =>
         {
+            updates.Changed -= UpdateBanner;
             timer.Dispose();
             statusTimer.Dispose();
             volumeTimer.Dispose();
@@ -441,6 +467,23 @@ sealed class SettingsForm : Form
         live.Text = xbox + ps == 0 ? "" : T("Gedrückt: ", "Pressed: ") + (p == 0 ? "–" : PadButtons.Format(p, Profile));
     }
 
+    void UpdateBanner()
+    {
+        if (IsDisposed || banner == null) return;
+        var release = updates.Available;
+        banner.Visible = release != null;
+        if (release != null)
+        {
+            bannerText.Text = updates.Busy
+                ? updates.Status
+                : T($"⬆ Neue Version {release.Tag} verfügbar (du hast v{Updater.Current.ToString(3)})",
+                    $"⬆ New version {release.Tag} available (you have v{Updater.Current.ToString(3)})");
+            bannerButton.Enabled = !updates.Busy;
+        }
+        updateStatus.Text = updates.Status.Length > 0 ? updates.Status : T($"Version v{Updater.Current.ToString(3)}", $"Version v{Updater.Current.ToString(3)}");
+        updateStatus.ForeColor = Theme.Subtle;
+    }
+
     VolumeTarget SelectedVolumeTarget => (VolumeTarget)volTarget.SelectedIndex;
 
     /// <summary>Shows the live volume of whatever "Volume up/down changes" points at.</summary>
@@ -552,6 +595,7 @@ sealed class SettingsForm : Form
         Config.SpotifyDirect = direct.Checked;
         Config.Rumble = rumble.Checked;
         Config.AutoRestartSpotify = autoRestart.Checked;
+        Config.CheckForUpdates = checkUpdates.Checked;
         Config.Language = (AppLanguage)language.SelectedIndex;
         Config.Theme = (AppTheme)theme.SelectedIndex;
         if (patchSpotify.Checked != Config.PatchSpotifyLaunch)
